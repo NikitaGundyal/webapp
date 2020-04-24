@@ -1,0 +1,129 @@
+---
+version: 2
+jobs:
+  pr_check:
+    docker:
+      - image : circleci/openjdk:11.0.5-jdk-stretch
+      - image: circleci/mysql:8.0.4
+        environment:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: user_db_test
+          MYSQL_USER: root123
+          MYSQL_PASSWORD: root123
+    steps:
+      - checkout
+      - run:
+          name: Testing circleci
+          command: echo "Hello World! I am circleci"
+      - run:
+      # Our primary container isn't MYSQL so run a sleep command until it's ready.
+          name: Waiting for MySQL to be ready
+          command: |
+            for i in `seq 1 20`;
+            do
+              nc -z 127.0.0.1 3306 && echo Success && exit 0
+              echo -n .
+              sleep 1
+            done
+            echo Failed waiting for MySQL && exit 1
+      - run:
+          name: Install MySQL CLI
+          command: |
+            sudo apt-get update  
+            sudo apt-get install default-mysql-client
+      - run:
+          name: Changing the directory to the webapp
+          command: |
+             pwd
+             cd webapp
+             sudo apt-get update
+             sudo apt install maven
+             mvn clean install 
+  build:
+    docker:
+      - image : circleci/openjdk:11.0.5-jdk-stretch
+      - image: circleci/python:2.7-jessie
+      - image: circleci/mysql:8.0.4
+        environment:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: user_db_test
+          MYSQL_USER: root123
+          MYSQL_PASSWORD: root123
+    steps:
+      - checkout
+      - run:
+          name: Testing circleci
+          command: echo "Hello World! I am circleci"
+      - run:
+      # Our primary container isn't MYSQL so run a sleep command until it's ready.
+          name: Waiting for MySQL to be ready
+          command: |
+            for i in `seq 1 20`;
+            do
+              nc -z 127.0.0.1 3306 && echo Success && exit 0
+              echo -n .
+              sleep 1
+            done
+            echo Failed waiting for MySQL && exit 1
+      - run:
+          name: Install MySQL CLI
+          command: |
+            sudo apt-get update  
+            sudo apt-get install default-mysql-client
+      - run:
+          name: Installing awscli
+          command: |
+             sudo apt-get update && sudo apt-get install wget zip unzip python2.7 python-pip -y
+             sudo pip install awscli --upgrade 
+      - run:
+          name: Changing the directory to the webapp
+          command: |
+             pwd
+             cd webapp
+             sudo apt-get update
+             sudo apt install maven
+             mvn clean install
+      - run:
+          name: Zip the artifact
+          command: |
+            echo "Hello the current build number is ${CIRCLE_BUILD_NUM}"
+            pwd
+            chmod +x start_application.sh
+            mkdir -p codedeploy_artifact
+            zip -r csye6225-webapp-${CIRCLE_BUILD_NUM}.zip ~/project/webapp/target/webapp-0.0.1-SNAPSHOT.jar *.sh *.yml *.json
+            mv csye6225-webapp-${CIRCLE_BUILD_NUM}.zip codedeploy_artifact/
+            cd codedeploy_artifact
+            ls -al
+            pwd
+            cd ..
+            pwd
+            ls -al
+      - run:
+          name: Upload Artifact to S3
+          command: |
+            cd codedeploy_artifact
+            aws configure list
+            aws s3 cp csye6225-webapp-${CIRCLE_BUILD_NUM}.zip s3://${s3bucket}
+            #aws s3 sync codedeploy_artifact s3://${s3bucket}
+            #cd codedeploy_artifact; unzip csye6225-web-app-${CIRCLE_BUILD_NUM}.zip; ls -al;aws deploy push --application-name CODE_DEPLOY_APPLICATION_NAME --description "Test" --region us-east-1 --s3-location s3://${s3bucket}/csye6225-web-app-${CIRCLE_BUILD_NUM}.zip --source /home/circleci/project/codedeploy_artifact
+      - run:
+          name: Make CodeDeploy API call
+          command: |
+            echo "Hello CodeDeploy"
+            echo "Testing" 
+            aws deploy create-deployment --region us-east-1 --application-name ${CodeDeployApplicationName} --deployment-group ${CodeDeploymentGroupName} --s3-location bucket=${s3bucket},key=csye6225-webapp-${CIRCLE_BUILD_NUM}.zip,bundleType=zip
+         
+
+workflows:
+  version: 2
+  pr-check-workflow:
+    jobs:
+    - pr_check
+  build-deploy-workflow:
+    jobs:
+    - build:
+        filters:
+          branches:
+            only: 
+              - master
+              

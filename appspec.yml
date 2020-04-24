@@ -1,0 +1,13 @@
+
+version: 0.0
+os: linux
+files:
+  - source: home/circleci/project/webapp/target/webapp-0.0.1-SNAPSHOT.jar
+    destination: /home/ubuntu/
+  - source: ./AmazonCloudWatch-config.json
+    destination: /home/ubuntu/
+hooks:
+  ApplicationStart:
+    - location: ./start_application.sh
+      timeout: 180
+      runas: ubuntu
